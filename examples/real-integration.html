@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Реальная интеграция OverpoweredJS с Яндекс Метрикой</title>
+</head>
+<body>
+    <h1>Интеграция с реальным OverpoweredJS API</h1>
+    
+    <div class="config-section">
+        <h2>Настройки</h2>
+        <div>
+            <label>
+                ID Яндекс Метрики: 
+                <input type="text" id="metrika-id" value="ВАSH_COUNTER_ID" placeholder="Введите ID счетчика">
+            </label>
+        </div>
+        <div>
+            <label>
+                OverpoweredJS API Key: 
+                <input type="text" id="api-key" value="public_CtOgbP-edO5NnL6A3rbKtlX0Xzxvx-CVeyW" placeholder="Ваш API ключ">
+            </label>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" id="debug-mode" checked> 
+                Режим отладки
+            </label>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" id="once-per-visit" checked> 
+                Отправлять один раз за визит
+            </label>
+        </div>
+        <button id="init-integration">Инициализировать интеграцию</button>
+        <button id="force-send">Принудительно отправить</button>
+        <button id="clear-session">Очистить сессию</button>
+    </div>
+
+    <div class="status-section">
+        <h2>Статус</h2>
+        <div id="status">Не инициализирован</div>
+        <div id="session-info"></div>
+    </div>
+
+    <div class="logs-section">
+        <h2>Логи</h2>
+        <div id="logs"></div>
+        <button id="clear-logs">Очистить логи</button>
+    </div>
+
+    <div class="data-section">
+        <h2>Данные</h2>
+        <div id="data-display"></div>
+    </div>
+
+    <!-- Яндекс Метрика -->
+    <script type="text/javascript">
+        (function(m,e,t,r,i,k,a){
+            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+            m[i].l=1*new Date();
+            for (var j = 0; j < document.scripts.length; j++) {
+                if (document.scripts[j].src === r) { return; }
+            }
+            k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+        })(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+    </script>
+
+    <!-- OverpoweredJS -->
+    <script src="https://cdn.overpoweredjs.com/loader/opjs"></script>
+
+    <!-- Наша интеграция -->
+    <script src="../src/core/MetrikaIntegration.js"></script>
+
+    <!-- Основной скрипт -->
+    <script>
+        let integration;
+
+        // Функция для добавления логов
+        function addLog(message, type = 'info') {
+            const logsEl = document.getElementById('logs');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.innerHTML = `<span class="timestamp">${new Date().toLocaleTimeString()}</span> ${message}`;
+            logsEl.appendChild(logEntry);
+            logsEl.scrollTop = logsEl.scrollHeight;
+        }
+
+        // Обновление информации о сессии
+        function updateSessionInfo() {
+            const sessionInfoEl = document.getElementById('session-info');
+            const metrikaId = document.getElementById('metrika-id').value;
+            const sessionKey = 'overpowered_metrika_sent_' + metrikaId;
+            const isSent = sessionStorage.getItem(sessionKey) === 'true';
+            
+            sessionInfoEl.innerHTML = `
+                <p><strong>Сессия:</strong> ${isSent ? 'Данные уже отправлены' : 'Данные не отправлены'}</p>
+                <p><strong>Ключ сессии:</strong> ${sessionKey}</p>
+            `;
+            sessionInfoEl.className = isSent ? 'session-sent' : 'session-not-sent';
+        }
+
+        // Инициализация интеграции
+        async function initializeIntegration() {
+            const statusEl = document.getElementById('status');
+            
+            try {
+                const metrikaId = document.getElementById('metrika-id').value;
+                const apiKey = document.getElementById('api-key').value;
+                const debug = document.getElementById('debug-mode').checked;
+                const oncePerVisit = document.getElementById('once-per-visit').checked;
+
+                if (!metrikaId || metrikaId === 'ВАSH_COUNTER_ID') {
+                    throw new Error('Укажите корректный ID счетчика Яндекс Метрики');
+                }
+
+                if (!apiKey) {
+                    throw new Error('Укажите API ключ OverpoweredJS');
+                }
+
+                statusEl.textContent = 'Инициализация...';
+                addLog('Начало инициализации интеграции');
+
+                // Инициализируем Яндекс Метрику
+                ym(metrikaId, 'init', {
+                    clickmap: true,
+                    trackLinks: true,
+                    accurateTrackBounce: true
+                });
+
+                // Создаем интеграцию с новыми параметрами
+                integration = new MetrikaIntegration(metrikaId, apiKey, {
+                    autoSend: false, // Отключаем автоотправку для демонстрации
+                    debug: debug,
+                    filterSensitiveData: true,
+                    oncePerVisit: oncePerVisit
+                });
+
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                statusEl.textContent = 'Интеграция готова к работе';
+                statusEl.className = 'status-success';
+                addLog('Интеграция успешно инициализирована', 'success');
+
+                updateSessionInfo();
+
+            } catch (error) {
+                statusEl.textContent = 'Ошибка: ' + error.message;
+                statusEl.className = 'status-error';
+                addLog('Ошибка инициализации: ' + error.message, 'error');
+            }
+        }
+
+        // Принудительная отправка данных
+        async function forceSendData() {
+            if (!integration) {
+                addLog('Интеграция не инициализирована', 'error');
+                return;
+            }
+
+            const dataDisplayEl = document.getElementById('data-display');
+            
+            try {
+                addLog('Начинаем сбор и отправку данных...');
+                dataDisplayEl.innerHTML = '<p>Сбор данных OverpoweredJS...</p>';
+                
+                const result = await integration.collectAndSend();
+                
+                if (result.skipped) {
+                    dataDisplayEl.innerHTML = `
+                        <h3>Отправка пропущена:</h3>
+                        <p style="color: orange;">Причина: ${result.reason}</p>
+                        <p>Данные уже были отправлены в этом визите</p>
+                    `;
+                    addLog('Отправка пропущена - данные уже отправлены в этом визите', 'warning');
+                } else if (result.success) {
+                    dataDisplayEl.innerHTML = `
+                        <h3>Данные успешно отправлены в Яндекс Метрику:</h3>
+                        <pre>${JSON.stringify(result.data, null, 2)}</pre>
+                    `;
+                    addLog('Данные успешно отправлены в Яндекс Метрику', 'success');
+                } else {
+                    dataDisplayEl.innerHTML = `<p style="color: red;">Ошибка: ${result.error}</p>`;
+                    addLog('Ошибка отправки: ' + result.error, 'error');
+                }
+
+                updateSessionInfo();
+
+            } catch (error) {
+                dataDisplayEl.innerHTML = `<p style="color: red;">Ошибка: ${error.message}</p>`;
+                addLog('Ошибка: ' + error.message, 'error');
+            }
+        }
+
+        // Очистка сессии
+        function clearSession() {
+            const metrikaId = document.getElementById('metrika-id').value;
+            const sessionKey = 'overpowered_metrika_sent_' + metrikaId;
+            sessionStorage.removeItem(sessionKey);
+            
+            addLog('Сессия очищена - теперь данные можно отправить снова', 'info');
+            updateSessionInfo();
+        }
+
+        // Обработчики событий
+        document.addEventListener('DOMContentLoaded', function() {
+            // Кнопки
+            document.getElementById('init-integration').addEventListener('click', initializeIntegration);
+            document.getElementById('force-send').addEventListener('click', forceSendData);
+            document.getElementById('clear-session').addEventListener('click', clearSession);
+            
+            document.getElementById('clear-logs').addEventListener('click', function() {
+                document.getElementById('logs').innerHTML = '';
+                addLog('Логи очищены');
+            });
+
+            // Обновление информации о сессии при изменении ID Метрики
+            document.getElementById('metrika-id').addEventListener('input', updateSessionInfo);
+
+            // Первоначальное обновление информации о сессии
+            updateSessionInfo();
+
+            // Автоинициализация через 1 секунду
+            setTimeout(function() {
+                addLog('Автоматическая инициализация через 1 секунду...');
+                initializeIntegration();
+            }, 1000);
+        });
+
+        // Демонстрация автоматической отправки при первом клике (как в вашем примере)
+        let firstClickHandled = false;
+        document.addEventListener('click', function() {
+            if (!firstClickHandled && integration) {
+                firstClickHandled = true;
+                addLog('Первый клик - запускаем отправку данных', 'info');
+                forceSendData();
+            }
+        });
+    </script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .config-section, .status-section, .logs-section, .data-section {
+            background-color: white;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1, h2 {
+            color: #333;
+            margin-top: 0;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        input[type="text"] {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 300px;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 8px;
+        }
+
+        label {
+            display: block;
+            margin: 10px 0;
+        }
+
+        #status {
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+        }
+
+        .status-success {
+            background-color: #d4edda !important;
+            border-left-color: #28a745 !important;
+            color: #155724;
+        }
+
+        .status-error {
+            background-color: #f8d7da !important;
+            border-left-color: #dc3545 !important;
+            color: #721c24;
+        }
+
+        #session-info {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .session-sent {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .session-not-sent {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+
+        #logs {
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+
+        .log-info { color: #333; }
+        .log-success { color: #28a745; }
+        .log-error { color: #dc3545; }
+        .log-warning { color: #fd7e14; }
+
+        .timestamp {
+            color: #6c757d;
+            font-weight: bold;
+        }
+
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+            border: 1px solid #dee2e6;
+        }
+
+        #data-display {
+            min-height: 100px;
+        }
+    </style>
+</body>
+</html>

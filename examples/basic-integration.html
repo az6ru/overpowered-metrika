@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Базовая интеграция OverpoweredJS с Яндекс Метрикой</title>
+</head>
+<body>
+    <h1>Пример интеграции OverpoweredJS с Яндекс Метрикой</h1>
+    
+    <div id="status">Загрузка...</div>
+    <div id="data-display"></div>
+    
+    <button id="manual-send">Отправить данные вручную</button>
+    <button id="send-goal">Отправить цель</button>
+
+    <!-- Яндекс Метрика -->
+    <script type="text/javascript">
+        (function(m,e,t,r,i,k,a){
+            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+            m[i].l=1*new Date();
+            for (var j = 0; j < document.scripts.length; j++) {
+                if (document.scripts[j].src === r) { return; }
+            }
+            k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+        })(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+
+        // Замените XXXXXX на ваш ID счетчика
+        ym('XXXXXX', 'init', {
+            clickmap:true,
+            trackLinks:true,
+            accurateTrackBounce:true
+        });
+    </script>
+
+    <!-- Подключение нашего скрипта интеграции -->
+    <script src="../src/core/MetrikaIntegration.js"></script>
+
+    <!-- Основной скрипт -->
+    <script>
+        // Эмуляция OverpoweredJS API (в реальном проекте будет подключен настоящий OverpoweredJS)
+        window.OverpoweredJS = {
+            analyze: async function() {
+                // Симуляция задержки анализа
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                
+                return {
+                    clusterUUID: "740-VJK-PPQ-1NZ",
+                    botScore: 3,
+                    browserTraits: {
+                        type: "chromium",
+                        hasCanvasNoise: false,
+                        isIncognito: false,
+                        isWebView: false,
+                        isAndroidWebView: false,
+                        possibleCountryCodes: ["RU"],
+                        isFakeUserAgent: false,
+                        isRootedDevice: false,
+                        isAntiDetect: false
+                    },
+                    lastSeen: 135,
+                    debug: {
+                        hash: "f1d41940b98f0a1d7682392221c111c9a266aa508217e1ba831bdf306cc607c2",
+                        performance: "35.00ms"
+                    },
+                    authToken: "219341135955369984",
+                    jwt: null
+                };
+            }
+        };
+
+        // Инициализация интеграции
+        let integration;
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            const statusEl = document.getElementById('status');
+            const dataDisplayEl = document.getElementById('data-display');
+            
+            try {
+                statusEl.textContent = 'Инициализация интеграции...';
+                
+                // Создаем экземпляр интеграции
+                // Замените 'XXXXXX' на реальный ID вашего счетчика Метрики
+                integration = new MetrikaIntegration('XXXXXX', {
+                    debug: true,
+                    autoSend: false // Отключаем автоотправку для демонстрации
+                });
+
+                // Ждем инициализации
+                await new Promise(resolve => setTimeout(resolve, 100));
+
+                statusEl.textContent = 'Интеграция инициализирована. Готов к работе.';
+                statusEl.style.color = 'green';
+
+            } catch (error) {
+                statusEl.textContent = 'Ошибка инициализации: ' + error.message;
+                statusEl.style.color = 'red';
+                console.error('Ошибка:', error);
+            }
+        });
+
+        // Обработчик кнопки ручной отправки
+        document.getElementById('manual-send').addEventListener('click', async function() {
+            const dataDisplayEl = document.getElementById('data-display');
+            
+            try {
+                dataDisplayEl.innerHTML = '<p>Сбор и отправка данных...</p>';
+                
+                const result = await integration.collectAndSend();
+                
+                if (result.success) {
+                    dataDisplayEl.innerHTML = `
+                        <h3>Данные успешно отправлены в Яндекс Метрику:</h3>
+                        <pre>${JSON.stringify(result.data, null, 2)}</pre>
+                    `;
+                    dataDisplayEl.style.color = 'green';
+                } else {
+                    dataDisplayEl.innerHTML = `<p style="color: red;">Ошибка: ${result.error}</p>`;
+                }
+
+            } catch (error) {
+                dataDisplayEl.innerHTML = `<p style="color: red;">Ошибка: ${error.message}</p>`;
+                console.error('Ошибка отправки:', error);
+            }
+        });
+
+        // Обработчик кнопки отправки цели
+        document.getElementById('send-goal').addEventListener('click', async function() {
+            try {
+                // Сначала собираем данные, если они еще не собраны
+                if (!integration.overpoweredData) {
+                    await integration.collectBrowserData();
+                }
+
+                // Отправляем цель с дополнительными параметрами
+                const success = integration.sendGoal('browser_analysis_completed', {
+                    custom_parameter: 'example_value',
+                    timestamp: new Date().toISOString()
+                });
+
+                if (success) {
+                    alert('Цель "browser_analysis_completed" успешно отправлена!');
+                } else {
+                    alert('Ошибка отправки цели');
+                }
+
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+                console.error('Ошибка отправки цели:', error);
+            }
+        });
+    </script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            margin: 10px 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        #data-display {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f5f5f5;
+            border-radius: 5px;
+            min-height: 100px;
+        }
+        
+        pre {
+            background-color: #fff;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+            font-size: 12px;
+        }
+        
+        #status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+        }
+    </style>
+</body>
+</html>

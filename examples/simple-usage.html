@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Простое использование OverpoweredJS + Яндекс Метрика</title>
+</head>
+<body>
+    <h1>Простая интеграция OverpoweredJS с Яндекс Метрикой</h1>
+    <p>Данные будут отправлены автоматически один раз за визит при первом клике на странице.</p>
+    
+    <button id="test-button">Нажмите для тестирования</button>
+    <div id="result"></div>
+
+    <!-- Яндекс Метрика -->
+    <script type="text/javascript">
+        (function(m,e,t,r,i,k,a){
+            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+            m[i].l=1*new Date();
+            for (var j = 0; j < document.scripts.length; j++) {
+                if (document.scripts[j].src === r) { return; }
+            }
+            k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+        })(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+
+        // ЗАМЕНИТЕ НА ВАШ ID СЧЕТЧИКА
+        ym('YOUR_COUNTER_ID', 'init', {
+            clickmap: true,
+            trackLinks: true,
+            accurateTrackBounce: true
+        });
+    </script>
+
+    <!-- OverpoweredJS -->
+    <script src="https://cdn.overpoweredjs.com/loader/opjs"></script>
+
+    <!-- Наша интеграция -->
+    <script src="../src/core/MetrikaIntegration.js"></script>
+
+    <!-- Простой скрипт использования -->
+    <script>
+        // НАСТРОЙКИ - ЗАМЕНИТЕ НА ВАШИ ЗНАЧЕНИЯ
+        const METRIKA_COUNTER_ID = 'YOUR_COUNTER_ID';  // Ваш ID счетчика Яндекс Метрики
+        const OVERPOWERED_API_KEY = 'public_CtOgbP-edO5NnL6A3rbKtlX0Xzxvx-CVeyW';  // Ваш API ключ OverpoweredJS
+
+        let integration;
+        let isProcessing = false;
+
+        // Инициализация интеграции
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                // Создаем экземпляр интеграции
+                integration = new MetrikaIntegration(METRIKA_COUNTER_ID, OVERPOWERED_API_KEY, {
+                    autoSend: false,     // Отключаем автоотправку
+                    debug: true,         // Включаем отладку
+                    oncePerVisit: true   // Отправляем только один раз за визит
+                });
+
+                console.log('✅ Интеграция инициализирована');
+
+            } catch (error) {
+                console.error('❌ Ошибка инициализации:', error);
+            }
+        });
+
+        // Обработка клика (как в вашем примере)
+        document.addEventListener('click', async function(event) {
+            if (isProcessing || !integration) return;
+
+            isProcessing = true;
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                resultDiv.innerHTML = '<p>🔄 Сбор и отправка данных...</p>';
+                console.log('🚀 Начинаем сбор данных OverpoweredJS...');
+
+                // Собираем и отправляем данные
+                const result = await integration.collectAndSend();
+
+                if (result.skipped) {
+                    resultDiv.innerHTML = `
+                        <div style="background: #fff3cd; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                            <h3>⚠️ Данные уже отправлены</h3>
+                            <p>В этом визите данные уже были переданы в Яндекс Метрику.</p>
+                            <p><small>Причина: ${result.reason}</small></p>
+                        </div>
+                    `;
+                    console.log('⚠️ Данные уже отправлены в этом визите');
+
+                } else if (result.success) {
+                    resultDiv.innerHTML = `
+                        <div style="background: #d4edda; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                            <h3>✅ Данные успешно отправлены!</h3>
+                            <p>Параметры браузера переданы в Яндекс Метрику.</p>
+                            <details>
+                                <summary>Показать отправленные данные</summary>
+                                <pre style="background: #f8f9fa; padding: 10px; margin: 10px 0; font-size: 12px; overflow: auto;">${JSON.stringify(result.data, null, 2)}</pre>
+                            </details>
+                        </div>
+                    `;
+                    console.log('✅ Данные успешно отправлены в Яндекс Метрику:', result.data);
+
+                } else {
+                    resultDiv.innerHTML = `
+                        <div style="background: #f8d7da; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                            <h3>❌ Ошибка отправки</h3>
+                            <p>${result.error}</p>
+                        </div>
+                    `;
+                    console.error('❌ Ошибка отправки:', result.error);
+                }
+
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div style="background: #f8d7da; padding: 15px; border-radius: 5px; margin: 10px 0;">
+                        <h3>❌ Критическая ошибка</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+                console.error('❌ Критическая ошибка:', error);
+
+            } finally {
+                isProcessing = false;
+            }
+        });
+
+        // Дополнительно: отправка цели при подозрительной активности
+        async function checkAndSendSuspiciousGoal() {
+            if (!integration || !integration.overpoweredData) return;
+
+            const data = integration.overpoweredData;
+            
+            // Проверяем на подозрительную активность
+            if (data.botScore && data.botScore > 5) {
+                integration.sendGoal('suspicious_activity', {
+                    bot_score: data.botScore,
+                    browser_type: data.browserTraits?.type
+                });
+                console.log('🚨 Отправлена цель "suspicious_activity"');
+            }
+        }
+
+        // Вызываем проверку через 2 секунды после отправки данных
+        setTimeout(checkAndSuspiciousGoal, 2000);
+    </script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            font-size: 16px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 20px 0;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        #result {
+            margin: 20px 0;
+        }
+
+        details {
+            margin: 10px 0;
+        }
+
+        summary {
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+    </style>
+</body>
+</html>

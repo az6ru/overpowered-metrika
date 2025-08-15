@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Расширенная интеграция OverpoweredJS с Яндекс Метрикой</title>
+</head>
+<body>
+    <h1>Расширенный пример интеграции</h1>
+    
+    <div class="config-section">
+        <h2>Конфигурация</h2>
+        <div>
+            <label>
+                <input type="checkbox" id="auto-send" checked> 
+                Автоматическая отправка при загрузке
+            </label>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" id="debug-mode" checked> 
+                Режим отладки
+            </label>
+        </div>
+        <div>
+            <label>
+                <input type="checkbox" id="filter-sensitive" checked> 
+                Фильтровать чувствительные данные
+            </label>
+        </div>
+        <div>
+            <label>
+                ID Метрики: 
+                <input type="text" id="metrika-id" value="XXXXXX" placeholder="Введите ID счетчика">
+            </label>
+        </div>
+        <button id="reinit">Переинициализировать</button>
+    </div>
+
+    <div class="status-section">
+        <h2>Статус</h2>
+        <div id="status">Не инициализирован</div>
+        <div id="logs"></div>
+    </div>
+
+    <div class="actions-section">
+        <h2>Действия</h2>
+        <button id="collect-data">Собрать данные</button>
+        <button id="send-data">Отправить в Метрику</button>
+        <button id="send-goal-1">Цель: Анализ завершен</button>
+        <button id="send-goal-2">Цель: Подозрительная активность</button>
+        <button id="clear-logs">Очистить логи</button>
+    </div>
+
+    <div class="data-section">
+        <h2>Собранные данные</h2>
+        <div id="raw-data"></div>
+        <div id="formatted-data"></div>
+    </div>
+
+    <!-- Яндекс Метрика -->
+    <script type="text/javascript">
+        (function(m,e,t,r,i,k,a){
+            m[i]=m[i]||function(){(m[i].a=m[i].a||[]).push(arguments)};
+            m[i].l=1*new Date();
+            for (var j = 0; j < document.scripts.length; j++) {
+                if (document.scripts[j].src === r) { return; }
+            }
+            k=e.createElement(t),a=e.getElementsByTagName(t)[0],k.async=1,k.src=r,a.parentNode.insertBefore(k,a)
+        })(window, document, "script", "https://mc.yandex.ru/metrika/tag.js", "ym");
+
+        // Инициализация будет происходить динамически
+    </script>
+
+    <!-- Подключение нашего скрипта интеграции -->
+    <script src="../src/core/MetrikaIntegration.js"></script>
+
+    <!-- Расширенный скрипт -->
+    <script>
+        // Эмуляция OverpoweredJS API с различными сценариями
+        window.OverpoweredJS = {
+            analyze: async function() {
+                await new Promise(resolve => setTimeout(resolve, Math.random() * 2000 + 500));
+                
+                // Генерируем различные сценарии данных
+                const scenarios = [
+                    // Обычный пользователь
+                    {
+                        clusterUUID: "normal-user-" + Date.now(),
+                        botScore: Math.floor(Math.random() * 3),
+                        browserTraits: {
+                            type: "chromium",
+                            hasCanvasNoise: false,
+                            isIncognito: false,
+                            isWebView: false,
+                            isAndroidWebView: false,
+                            possibleCountryCodes: ["RU"],
+                            isFakeUserAgent: false,
+                            isRootedDevice: false,
+                            isAntiDetect: false
+                        }
+                    },
+                    // Подозрительный пользователь
+                    {
+                        clusterUUID: "suspicious-" + Date.now(),
+                        botScore: Math.floor(Math.random() * 4) + 6,
+                        browserTraits: {
+                            type: "chromium",
+                            hasCanvasNoise: true,
+                            isIncognito: true,
+                            isWebView: false,
+                            isAndroidWebView: false,
+                            possibleCountryCodes: ["US", "GB"],
+                            isFakeUserAgent: true,
+                            isRootedDevice: false,
+                            isAntiDetect: true
+                        }
+                    },
+                    // Мобильный пользователь
+                    {
+                        clusterUUID: "mobile-" + Date.now(),
+                        botScore: Math.floor(Math.random() * 2),
+                        browserTraits: {
+                            type: "webkit",
+                            hasCanvasNoise: false,
+                            isIncognito: false,
+                            isWebView: true,
+                            isAndroidWebView: true,
+                            possibleCountryCodes: ["RU"],
+                            isFakeUserAgent: false,
+                            isRootedDevice: Math.random() > 0.8,
+                            isAntiDetect: false
+                        }
+                    }
+                ];
+
+                const scenario = scenarios[Math.floor(Math.random() * scenarios.length)];
+                
+                return {
+                    ...scenario,
+                    lastSeen: Math.floor(Math.random() * 1000),
+                    debug: {
+                        hash: Array.from(crypto.getRandomValues(new Uint8Array(16)))
+                            .map(b => b.toString(16).padStart(2, '0'))
+                            .join(''),
+                        performance: (Math.random() * 100 + 10).toFixed(2) + "ms"
+                    },
+                    authToken: "token-" + Date.now(),
+                    jwt: null
+                };
+            }
+        };
+
+        let integration;
+        let currentData = null;
+
+        // Функция для добавления логов
+        function addLog(message, type = 'info') {
+            const logsEl = document.getElementById('logs');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry log-${type}`;
+            logEntry.innerHTML = `<span class="timestamp">${new Date().toLocaleTimeString()}</span> ${message}`;
+            logsEl.appendChild(logEntry);
+            logsEl.scrollTop = logsEl.scrollHeight;
+        }
+
+        // Функция инициализации
+        async function initializeIntegration() {
+            const statusEl = document.getElementById('status');
+            
+            try {
+                const metrikaId = document.getElementById('metrika-id').value;
+                const autoSend = document.getElementById('auto-send').checked;
+                const debug = document.getElementById('debug-mode').checked;
+                const filterSensitive = document.getElementById('filter-sensitive').checked;
+
+                if (!metrikaId || metrikaId === 'XXXXXX') {
+                    throw new Error('Укажите корректный ID счетчика Яндекс Метрики');
+                }
+
+                statusEl.textContent = 'Инициализация...';
+                addLog('Начало инициализации интеграции');
+
+                // Инициализируем Яндекс Метрику с новым ID
+                ym(metrikaId, 'init', {
+                    clickmap: true,
+                    trackLinks: true,
+                    accurateTrackBounce: true
+                });
+
+                integration = new MetrikaIntegration(metrikaId, {
+                    autoSend: autoSend,
+                    debug: debug,
+                    filterSensitiveData: filterSensitive
+                });
+
+                await new Promise(resolve => setTimeout(resolve, 500));
+
+                statusEl.textContent = 'Интеграция активна';
+                statusEl.className = 'status-success';
+                addLog('Интеграция успешно инициализирована', 'success');
+
+            } catch (error) {
+                statusEl.textContent = 'Ошибка: ' + error.message;
+                statusEl.className = 'status-error';
+                addLog('Ошибка инициализации: ' + error.message, 'error');
+            }
+        }
+
+        // Обработчики событий
+        document.addEventListener('DOMContentLoaded', function() {
+            // Переинициализация
+            document.getElementById('reinit').addEventListener('click', initializeIntegration);
+
+            // Сбор данных
+            document.getElementById('collect-data').addEventListener('click', async function() {
+                if (!integration) {
+                    addLog('Интеграция не инициализирована', 'error');
+                    return;
+                }
+
+                try {
+                    addLog('Начинаем сбор данных...');
+                    currentData = await integration.collectBrowserData();
+                    
+                    document.getElementById('raw-data').innerHTML = `
+                        <h3>Исходные данные OverpoweredJS:</h3>
+                        <pre>${JSON.stringify(currentData, null, 2)}</pre>
+                    `;
+
+                    const formatted = integration.formatDataForMetrika(currentData);
+                    document.getElementById('formatted-data').innerHTML = `
+                        <h3>Данные для Яндекс Метрики:</h3>
+                        <pre>${JSON.stringify(formatted, null, 2)}</pre>
+                    `;
+
+                    addLog('Данные успешно собраны', 'success');
+
+                } catch (error) {
+                    addLog('Ошибка сбора данных: ' + error.message, 'error');
+                }
+            });
+
+            // Отправка в Метрику
+            document.getElementById('send-data').addEventListener('click', function() {
+                if (!integration || !currentData) {
+                    addLog('Данные не собраны или интеграция не инициализирована', 'error');
+                    return;
+                }
+
+                try {
+                    const formatted = integration.formatDataForMetrika(currentData);
+                    const success = integration.sendToMetrika(formatted);
+                    
+                    if (success) {
+                        addLog('Данные успешно отправлены в Яндекс Метрику', 'success');
+                    } else {
+                        addLog('Ошибка отправки данных', 'error');
+                    }
+
+                } catch (error) {
+                    addLog('Ошибка отправки: ' + error.message, 'error');
+                }
+            });
+
+            // Отправка целей
+            document.getElementById('send-goal-1').addEventListener('click', function() {
+                if (!integration) return;
+                
+                const success = integration.sendGoal('analysis_completed', {
+                    analysis_type: 'browser_fingerprint',
+                    user_category: currentData?.botScore > 5 ? 'suspicious' : 'normal'
+                });
+
+                addLog(success ? 'Цель "analysis_completed" отправлена' : 'Ошибка отправки цели', 
+                       success ? 'success' : 'error');
+            });
+
+            document.getElementById('send-goal-2').addEventListener('click', function() {
+                if (!integration || !currentData) return;
+                
+                if (currentData.botScore > 5) {
+                    const success = integration.sendGoal('suspicious_activity', {
+                        bot_score: currentData.botScore,
+                        anti_detect: currentData.browserTraits?.isAntiDetect,
+                        fake_user_agent: currentData.browserTraits?.isFakeUserAgent
+                    });
+
+                    addLog(success ? 'Цель "suspicious_activity" отправлена' : 'Ошибка отправки цели', 
+                           success ? 'success' : 'error');
+                } else {
+                    addLog('Подозрительная активность не обнаружена (bot_score <= 5)', 'info');
+                }
+            });
+
+            // Очистка логов
+            document.getElementById('clear-logs').addEventListener('click', function() {
+                document.getElementById('logs').innerHTML = '';
+                addLog('Логи очищены');
+            });
+
+            // Автоинициализация
+            setTimeout(initializeIntegration, 500);
+        });
+    </script>
+
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .config-section, .status-section, .actions-section, .data-section {
+            background-color: white;
+            margin: 20px 0;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        h1, h2 {
+            color: #333;
+            margin-top: 0;
+        }
+
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 15px;
+            margin: 5px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        button:hover {
+            background-color: #45a049;
+        }
+
+        input[type="text"] {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 200px;
+        }
+
+        input[type="checkbox"] {
+            margin-right: 8px;
+        }
+
+        label {
+            display: block;
+            margin: 10px 0;
+        }
+
+        #status {
+            padding: 15px;
+            border-radius: 5px;
+            font-weight: bold;
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+        }
+
+        .status-success {
+            background-color: #d4edda !important;
+            border-left-color: #28a745 !important;
+            color: #155724;
+        }
+
+        .status-error {
+            background-color: #f8d7da !important;
+            border-left-color: #dc3545 !important;
+            color: #721c24;
+        }
+
+        #logs {
+            max-height: 200px;
+            overflow-y: auto;
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            font-family: monospace;
+            font-size: 12px;
+        }
+
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+        }
+
+        .log-info { color: #333; }
+        .log-success { color: #28a745; }
+        .log-error { color: #dc3545; }
+
+        .timestamp {
+            color: #6c757d;
+            font-weight: bold;
+        }
+
+        pre {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 12px;
+            border: 1px solid #dee2e6;
+        }
+
+        #raw-data, #formatted-data {
+            margin-top: 15px;
+        }
+    </style>
+</body>
+</html>
