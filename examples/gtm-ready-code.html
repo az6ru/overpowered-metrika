@@ -1,0 +1,125 @@
+<!-- 
+    ГОТОВЫЙ КОД ДЛЯ GOOGLE TAG MANAGER
+    Скопируйте этот код в Custom HTML тег GTM
+    
+    ЗАМЕНИТЕ:
+    - 45047126 на ваш ID счетчика Яндекс Метрики
+    - public_CtOgbP-edO5NnL6A3rbKtlX0Xzxvx-CVeyW на ваш API ключ OverpoweredJS
+-->
+
+<!-- OverpoweredJS CDN -->
+<script src="https://cdn.overpoweredjs.com/loader/opjs"></script>
+
+<!-- Интеграция OverpoweredJS + Яндекс Метрика (ES5 для GTM) -->
+<script>
+(function() {
+    // НАСТРОЙКИ - ЗАМЕНИТЕ НА ВАШИ ЗНАЧЕНИЯ
+    var METRIKA_ID = '45047126';  // ВАШ ID СЧЕТЧИКА ЯНДЕКС МЕТРИКИ
+    var API_KEY = 'public_CtOgbP-edO5NnL6A3rbKtlX0Xzxvx-CVeyW';  // ВАШ API КЛЮЧ OVERPOWEREDJS
+    var DEBUG = false;  // true для отладки, false для продакшена
+    
+    var sessionKey = 'overpowered_metrika_sent_' + METRIKA_ID;
+    var clickHandled = false;
+    
+    // Проверка на повторную отправку
+    function isAlreadySent() {
+        try {
+            return sessionStorage.getItem(sessionKey) === 'true';
+        } catch (e) {
+            return false;
+        }
+    }
+    
+    // Отметка об отправке
+    function markAsSent() {
+        try {
+            sessionStorage.setItem(sessionKey, 'true');
+        } catch (e) {
+            if (DEBUG) console.warn('[OverpoweredMetrika] SessionStorage недоступен');
+        }
+    }
+    
+    // Основная функция интеграции
+    function sendOverpoweredDataToMetrika() {
+        // Проверяем, не отправляли ли уже
+        if (isAlreadySent()) {
+            if (DEBUG) console.log('[OverpoweredMetrika] Данные уже отправлены в этом визите');
+            return;
+        }
+        
+        // Проверяем доступность API
+        if (typeof window.opjs === 'undefined') {
+            console.error('[OverpoweredMetrika] OverpoweredJS не найден');
+            return;
+        }
+        
+        if (typeof window.ym === 'undefined') {
+            console.error('[OverpoweredMetrika] Яндекс Метрика не найдена');
+            return;
+        }
+        
+        if (DEBUG) console.log('[OverpoweredMetrika] Начинаем сбор данных...');
+        
+        // Собираем данные OverpoweredJS
+        window.opjs({ API_KEY: API_KEY }).then(function(data) {
+            if (DEBUG) console.log('[OverpoweredMetrika] Получены данные:', data);
+            
+            // Форматируем для Метрики
+            var metrikaData = {
+                overpowered_bot_score: data.botScore,
+                overpowered_cluster_uuid: data.clusterUUID,
+                browser_type: data.browserTraits ? data.browserTraits.type : null,
+                browser_is_incognito: data.browserTraits ? data.browserTraits.isIncognito : null,
+                browser_is_webview: data.browserTraits ? data.browserTraits.isWebView : null,
+                browser_anti_detect: data.browserTraits ? data.browserTraits.isAntiDetect : null,
+                browser_fake_user_agent: data.browserTraits ? data.browserTraits.isFakeUserAgent : null,
+                browser_country_codes: data.browserTraits && data.browserTraits.possibleCountryCodes ? 
+                    data.browserTraits.possibleCountryCodes.join(',') : null
+            };
+            
+            // Отправляем в Метрику
+            window.ym(METRIKA_ID, 'userParams', metrikaData);
+            
+            // Отмечаем как отправленное
+            markAsSent();
+            
+            if (DEBUG) {
+                console.log('[OverpoweredMetrika] Данные отправлены в Метрику:', metrikaData);
+            }
+            
+            // Отправляем цель при подозрительной активности
+            if (data.botScore > 5) {
+                window.ym(METRIKA_ID, 'reachGoal', 'suspicious_activity', {
+                    bot_score: data.botScore
+                });
+                if (DEBUG) console.log('[OverpoweredMetrika] Отправлена цель "suspicious_activity"');
+            }
+            
+        }).catch(function(error) {
+            console.error('[OverpoweredMetrika] Ошибка сбора данных:', error);
+        });
+    }
+    
+    // Обработчик первого клика
+    function handleFirstClick() {
+        if (clickHandled) return;
+        clickHandled = true;
+        
+        if (DEBUG) console.log('[OverpoweredMetrika] Первый клик - запускаем интеграцию');
+        sendOverpoweredDataToMetrika();
+    }
+    
+    // Добавляем обработчик события
+    function addClickListener() {
+        document.addEventListener('click', handleFirstClick);
+    }
+    
+    // Инициализация
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', addClickListener);
+    } else {
+        addClickListener();
+    }
+    
+})();
+</script>
