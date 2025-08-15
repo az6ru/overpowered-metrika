@@ -1,6 +1,6 @@
 <!-- 
-    ГОТОВЫЙ КОД ДЛЯ GOOGLE TAG MANAGER
-    Скопируйте этот код в Custom HTML тег GTM
+    ИСПРАВЛЕННЫЙ КОД ДЛЯ GOOGLE TAG MANAGER
+    Передает ВСЕ доступные параметры, исключая null значения
     
     ЗАМЕНИТЕ:
     - 45047126 на ваш ID счетчика Яндекс Метрики
@@ -10,13 +10,13 @@
 <!-- OverpoweredJS CDN -->
 <script src="https://cdn.overpoweredjs.com/loader/opjs"></script>
 
-<!-- Интеграция OverpoweredJS + Яндекс Метрика (ES5 для GTM) -->
+<!-- Исправленная интеграция OverpoweredJS + Яндекс Метрика -->
 <script>
 (function() {
     // НАСТРОЙКИ - ЗАМЕНИТЕ НА ВАШИ ЗНАЧЕНИЯ
     var METRIKA_ID = '45047126';  // ВАШ ID СЧЕТЧИКА ЯНДЕКС МЕТРИКИ
     var API_KEY = 'public_CtOgbP-edO5NnL6A3rbKtlX0Xzxvx-CVeyW';  // ВАШ API КЛЮЧ OVERPOWEREDJS
-    var DEBUG = false;  // true для отладки, false для продакшена
+    var DEBUG = true;  // true для отладки, false для продакшена
     
     var sessionKey = 'overpowered_metrika_sent_' + METRIKA_ID;
     var clickHandled = false;
@@ -36,6 +36,21 @@
             sessionStorage.setItem(sessionKey, 'true');
         } catch (e) {
             if (DEBUG) console.warn('[OverpoweredMetrika] SessionStorage недоступен');
+        }
+    }
+    
+    // Функция для безопасного получения значения (исключает null/undefined)
+    function safeValue(value, defaultValue) {
+        if (value === null || value === undefined) {
+            return defaultValue;
+        }
+        return value;
+    }
+    
+    // Функция для добавления параметра только если он не null/undefined
+    function addParam(obj, key, value) {
+        if (value !== null && value !== undefined) {
+            obj[key] = value;
         }
     }
     
@@ -62,14 +77,7 @@
         
         // Собираем данные OverpoweredJS
         window.opjs({ API_KEY: API_KEY }).then(function(data) {
-            if (DEBUG) console.log('[OverpoweredMetrika] Получены данные:', data);
-            
-            // Функция для добавления параметра только если он не null/undefined
-            function addParam(obj, key, value) {
-                if (value !== null && value !== undefined) {
-                    obj[key] = value;
-                }
-            }
+            if (DEBUG) console.log('[OverpoweredMetrika] Получены данные OverpoweredJS:', data);
             
             // Создаем объект для Метрики, добавляя только непустые значения
             var metrikaData = {};
@@ -99,6 +107,7 @@
             // Отладочная информация
             if (data.debug) {
                 addParam(metrikaData, 'overpowered_performance', data.debug.performance);
+                // Хеш не передаем для безопасности
             }
             
             // Дополнительные вычисляемые параметры
@@ -106,7 +115,7 @@
             addParam(metrikaData, 'overpowered_timestamp', new Date().toISOString());
             
             if (DEBUG) {
-                console.log('[OverpoweredMetrika] Данные для отправки:', metrikaData);
+                console.log('[OverpoweredMetrika] Данные для отправки в Метрику:', metrikaData);
                 console.log('[OverpoweredMetrika] Количество параметров:', Object.keys(metrikaData).length);
             }
             
@@ -117,19 +126,34 @@
             markAsSent();
             
             if (DEBUG) {
-                console.log('[OverpoweredMetrika] ✅ Данные отправлены в Метрику');
+                console.log('[OverpoweredMetrika] ✅ Данные успешно отправлены в Яндекс Метрику');
             }
             
             // Отправляем цель при подозрительной активности
             if (data.botScore > 5) {
-                window.ym(METRIKA_ID, 'reachGoal', 'suspicious_activity', {
-                    bot_score: data.botScore
-                });
-                if (DEBUG) console.log('[OverpoweredMetrika] Отправлена цель "suspicious_activity"');
+                var goalParams = {
+                    bot_score: data.botScore,
+                    risk_level: data.botScore > 7 ? 'high' : 'medium'
+                };
+                
+                if (data.browserTraits && data.browserTraits.isAntiDetect) {
+                    goalParams.anti_detect = true;
+                }
+                
+                window.ym(METRIKA_ID, 'reachGoal', 'suspicious_activity', goalParams);
+                
+                if (DEBUG) console.log('[OverpoweredMetrika] 🚨 Отправлена цель "suspicious_activity"', goalParams);
             }
             
+            // Отправляем цель об успешном анализе
+            window.ym(METRIKA_ID, 'reachGoal', 'overpowered_analysis_completed', {
+                bot_score: data.botScore,
+                browser_type: data.browserTraits ? data.browserTraits.type : 'unknown',
+                params_count: Object.keys(metrikaData).length
+            });
+            
         }).catch(function(error) {
-            console.error('[OverpoweredMetrika] Ошибка сбора данных:', error);
+            console.error('[OverpoweredMetrika] ❌ Ошибка сбора данных:', error);
         });
     }
     
@@ -138,20 +162,47 @@
         if (clickHandled) return;
         clickHandled = true;
         
-        if (DEBUG) console.log('[OverpoweredMetrika] Первый клик - запускаем интеграцию');
+        if (DEBUG) console.log('[OverpoweredMetrika] 👆 Первый клик - запускаем интеграцию');
         sendOverpoweredDataToMetrika();
     }
     
     // Добавляем обработчик события
     function addClickListener() {
         document.addEventListener('click', handleFirstClick);
+        if (DEBUG) console.log('[OverpoweredMetrika] 📝 Обработчик клика добавлен');
     }
     
     // Инициализация
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', addClickListener);
+        document.addEventListener('DOMContentLoaded', function() {
+            if (DEBUG) console.log('[OverpoweredMetrika] 🚀 DOM загружен, добавляем обработчик');
+            addClickListener();
+        });
     } else {
+        if (DEBUG) console.log('[OverpoweredMetrika] 🚀 DOM уже загружен, добавляем обработчик');
         addClickListener();
+    }
+    
+    // Глобальная функция для принудительного запуска (для отладки)
+    if (DEBUG) {
+        window.OverpoweredMetrikaForceRun = function() {
+            console.log('[OverpoweredMetrika] 🔧 Принудительный запуск...');
+            clickHandled = false; // Сбрасываем флаг
+            sendOverpoweredDataToMetrika();
+        };
+        
+        window.OverpoweredMetrikaClearSession = function() {
+            try {
+                sessionStorage.removeItem(sessionKey);
+                console.log('[OverpoweredMetrika] 🗑️ Сессия очищена');
+            } catch (e) {
+                console.warn('[OverpoweredMetrika] Не удалось очистить сессию');
+            }
+        };
+        
+        console.log('[OverpoweredMetrika] 🛠️ Отладочные функции доступны:');
+        console.log('- OverpoweredMetrikaForceRun() - принудительный запуск');
+        console.log('- OverpoweredMetrikaClearSession() - очистка сессии');
     }
     
 })();
