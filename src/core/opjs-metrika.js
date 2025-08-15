@@ -6,13 +6,20 @@
     // Конфигурация по умолчанию
     const defaultConfig = {
       counterId: null, // ID счетчика Yandex Metrika
-      apiKey: 'public_sIrVH6YnVMte8IasGjBIPDfHy6-ZtdWL2Y3', // API-ключ OverpoweredJS
+      apiKey: null, // API-ключ OverpoweredJS (обязательно через конфигурацию)
       paramsToSend: [], // Ключи для передачи (пустой = весь объект)
-      token: null // Опциональный токен
+      debug: false // Режим логирования (true = включено)
     };
   
     // Получение конфигурации
     const config = Object.assign({}, defaultConfig, window.opjsMetrikaConfig || {});
+  
+    // Функция логирования (только если debug: true)
+    function log(message, ...args) {
+      if (config.debug) {
+        console.log(`[opjs-metrika] ${message}`, ...args);
+      }
+    }
   
     // Функция отправки данных в Yandex Metrika
     function sendToYandexMetrika(fpData) {
@@ -26,20 +33,14 @@
       let dataToSend = {};
       if (config.paramsToSend.length > 0) {
         config.paramsToSend.forEach(key => {
-          // Проверяем наличие ключа в fpData
           if (Object.prototype.hasOwnProperty.call(fpData, key)) {
             dataToSend[key] = fpData[key];
           } else {
-            console.warn(`Ключ "${key}" отсутствует в данных OverpoweredJS.`);
+            log(`Ключ "${key}" отсутствует в данных OverpoweredJS.`);
           }
         });
       } else {
         dataToSend = { ...fpData }; // Полный объект
-      }
-  
-      // Добавляем токен, если указан
-      if (config.token) {
-        dataToSend.token = config.token;
       }
   
       // Проверяем, есть ли данные для отправки
@@ -52,7 +53,7 @@
       try {
         yaCounter.params(dataToSend);
         yaCounter.userParams(dataToSend);
-        console.log('Данные отправлены в Yandex Metrika:', dataToSend);
+        log('Данные отправлены в Yandex Metrika:', dataToSend);
       } catch (err) {
         console.error('Ошибка при отправке в Yandex Metrika:', err);
       }
@@ -62,7 +63,7 @@
     function fetchAndSendFingerprint() {
       // Проверка отправки в текущей сессии
       if (sessionStorage.getItem('opjsSentToMetrika')) {
-        console.log('Данные уже отправлены в этой сессии.');
+        log('Данные уже отправлены в этой сессии.');
         return;
       }
   
@@ -75,6 +76,12 @@
       // Проверка counterId
       if (!config.counterId) {
         console.error('Не указан counterId для Yandex Metrika.');
+        return;
+      }
+  
+      // Проверка apiKey
+      if (!config.apiKey) {
+        console.error('Не указан apiKey для OverpoweredJS.');
         return;
       }
   
