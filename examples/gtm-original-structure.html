@@ -1,0 +1,232 @@
+<!-- 
+    ВЕРСИЯ С ОРИГИНАЛЬНОЙ СТРУКТУРОЙ OVERPOWEREDJS ДЛЯ GTM
+    Полностью сохраняет исходную схему данных OverpoweredJS
+    
+    ЗАМЕНИТЕ:
+    - 102422498 на ваш ID счетчика Яндекс Метрики
+    - public_sIrVH6YnVMte8IasGjBIPDfHy6-ZtdWL2Y3 на ваш API ключ OverpoweredJS
+-->
+
+<!-- OverpoweredJS CDN -->
+<script src="https://cdn.overpoweredjs.com/loader/opjs"></script>
+
+<!-- Интеграция с оригинальной структурой OverpoweredJS -->
+<script>
+(function() {
+    // НАСТРОЙКИ - ЗАМЕНИТЕ НА ВАШИ ЗНАЧЕНИЯ
+    var METRIKA_ID = '102422498';  // ВАШ ID СЧЕТЧИКА ЯНДЕКС МЕТРИКИ
+    var API_KEY = 'public_sIrVH6YnVMte8IasGjBIPDfHy6-ZtdWL2Y3';  // ВАШ API КЛЮЧ OVERPOWEREDJS
+    var DEBUG = true;  // true для отладки, false для продакшена
+    
+    var sessionKey = 'overpowered_metrika_sent_' + METRIKA_ID;
+    var clickHandled = false;
+    
+    function isAlreadySent() {
+        try {
+            return sessionStorage.getItem(sessionKey) === 'true';
+        } catch (e) {
+            return false;
+        }
+    }
+    
+    function markAsSent() {
+        try {
+            sessionStorage.setItem(sessionKey, 'true');
+        } catch (e) {
+            if (DEBUG) console.warn('[OverpoweredMetrika] SessionStorage недоступен');
+        }
+    }
+    
+    function addParam(obj, key, value) {
+        if (value !== null && value !== undefined) {
+            obj[key] = value;
+        }
+    }
+    
+    function sendOverpoweredDataToMetrika() {
+        if (isAlreadySent()) {
+            if (DEBUG) console.log('[OverpoweredMetrika] Данные уже отправлены в этом визите');
+            return;
+        }
+        
+        if (typeof window.opjs === 'undefined' || typeof window.ym === 'undefined') {
+            console.error('[OverpoweredMetrika] OverpoweredJS или Яндекс Метрика не найдены');
+            return;
+        }
+        
+        if (DEBUG) console.log('[OverpoweredMetrika] Начинаем сбор данных...');
+        
+        window.opjs({ API_KEY: API_KEY }).then(function(data) {
+            if (DEBUG) console.log('[OverpoweredMetrika] Получены данные OverpoweredJS:', data);
+            
+            // 1. ПАРАМЕТРЫ ПОСЕТИТЕЛЕЙ (плоская структура для фильтрации)
+            var userParams = {};
+            
+            addParam(userParams, 'overpowered_bot_score', data.botScore);
+            addParam(userParams, 'overpowered_cluster_uuid', data.clusterUUID);
+            addParam(userParams, 'overpowered_last_seen', data.lastSeen);
+            addParam(userParams, 'overpowered_risk_level', data.botScore > 7 ? 'high' : data.botScore > 4 ? 'medium' : 'low');
+            addParam(userParams, 'overpowered_timestamp', new Date().toISOString());
+            
+            if (data.browserTraits) {
+                addParam(userParams, 'browser_type', data.browserTraits.type);
+                addParam(userParams, 'browser_has_canvas_noise', data.browserTraits.hasCanvasNoise);
+                addParam(userParams, 'browser_is_incognito', data.browserTraits.isIncognito);
+                addParam(userParams, 'browser_is_webview', data.browserTraits.isWebView);
+                addParam(userParams, 'browser_is_android_webview', data.browserTraits.isAndroidWebView);
+                addParam(userParams, 'browser_fake_user_agent', data.browserTraits.isFakeUserAgent);
+                addParam(userParams, 'browser_rooted_device', data.browserTraits.isRootedDevice);
+                addParam(userParams, 'browser_anti_detect', data.browserTraits.isAntiDetect);
+                
+                if (data.browserTraits.possibleCountryCodes && data.browserTraits.possibleCountryCodes.length > 0) {
+                    addParam(userParams, 'browser_country_codes', data.browserTraits.possibleCountryCodes.join(','));
+                }
+            }
+            
+            if (data.debug) {
+                addParam(userParams, 'overpowered_performance', data.debug.performance);
+            }
+            
+            // 2. ПАРАМЕТРЫ ВИЗИТОВ (ТОЧНАЯ КОПИЯ СТРУКТУРЫ OVERPOWEREDJS)
+            var visitParams = {};
+            
+            // Основные поля - точно как в OverpoweredJS
+            addParam(visitParams, 'clusterUUID', data.clusterUUID);
+            addParam(visitParams, 'botScore', data.botScore);
+            addParam(visitParams, 'lastSeen', data.lastSeen);
+            addParam(visitParams, 'authToken', data.authToken);
+            addParam(visitParams, 'jwt', data.jwt);
+            
+            // browserTraits - точная копия структуры
+            if (data.browserTraits) {
+                var browserTraits = {};
+                
+                addParam(browserTraits, 'type', data.browserTraits.type);
+                addParam(browserTraits, 'hasCanvasNoise', data.browserTraits.hasCanvasNoise);
+                addParam(browserTraits, 'isIncognito', data.browserTraits.isIncognito);
+                addParam(browserTraits, 'isWebView', data.browserTraits.isWebView);
+                addParam(browserTraits, 'isAndroidWebView', data.browserTraits.isAndroidWebView);
+                addParam(browserTraits, 'isFakeUserAgent', data.browserTraits.isFakeUserAgent);
+                addParam(browserTraits, 'isRootedDevice', data.browserTraits.isRootedDevice);
+                addParam(browserTraits, 'isAntiDetect', data.browserTraits.isAntiDetect);
+                
+                // possibleCountryCodes как массив (точно как в оригинале)
+                if (data.browserTraits.possibleCountryCodes && data.browserTraits.possibleCountryCodes.length > 0) {
+                    addParam(browserTraits, 'possibleCountryCodes', data.browserTraits.possibleCountryCodes);
+                }
+                
+                // Добавляем только если есть данные
+                if (Object.keys(browserTraits).length > 0) {
+                    visitParams.browserTraits = browserTraits;
+                }
+            }
+            
+            // debug - точная копия структуры
+            if (data.debug) {
+                var debugInfo = {};
+                addParam(debugInfo, 'hash', data.debug.hash);
+                addParam(debugInfo, 'performance', data.debug.performance);
+                
+                if (Object.keys(debugInfo).length > 0) {
+                    visitParams.debug = debugInfo;
+                }
+            }
+            
+            // Дополнительные поля для аналитики
+            addParam(visitParams, 'analysisTimestamp', new Date().toISOString());
+            
+            if (DEBUG) {
+                console.log('[OverpoweredMetrika] Параметры посетителей (плоские):', userParams);
+                console.log('[OverpoweredMetrika] Параметры визита (оригинальная структура):', visitParams);
+                console.log('[OverpoweredMetrika] Параметров посетителей:', Object.keys(userParams).length);
+                console.log('[OverpoweredMetrika] Структура идентична OverpoweredJS:', JSON.stringify(visitParams, null, 2));
+            }
+            
+            // ОТПРАВЛЯЕМ ДАННЫЕ
+            window.ym(METRIKA_ID, 'userParams', userParams);
+            window.ym(METRIKA_ID, 'params', visitParams);
+            
+            markAsSent();
+            
+            if (DEBUG) {
+                console.log('[OverpoweredMetrika] ✅ Параметры посетителей отправлены');
+                console.log('[OverpoweredMetrika] 📊 Параметры визита отправлены в оригинальной структуре');
+            }
+            
+            // ЦЕЛЬ ТОЛЬКО ДЛЯ ПОДОЗРИТЕЛЬНОЙ АКТИВНОСТИ
+            if (data.botScore > 5) {
+                window.ym(METRIKA_ID, 'reachGoal', 'suspicious_activity', {
+                    bot_score: data.botScore,
+                    risk_level: data.botScore > 7 ? 'high' : 'medium'
+                });
+                
+                if (DEBUG) console.log('[OverpoweredMetrika] 🚨 Отправлена цель "suspicious_activity"');
+            }
+            
+        }).catch(function(error) {
+            console.error('[OverpoweredMetrika] ❌ Ошибка сбора данных:', error);
+        });
+    }
+    
+    function handleFirstClick() {
+        if (clickHandled) return;
+        clickHandled = true;
+        
+        if (DEBUG) console.log('[OverpoweredMetrika] 👆 Первый клик - запускаем интеграцию');
+        sendOverpoweredDataToMetrika();
+    }
+    
+    function addClickListener() {
+        document.addEventListener('click', handleFirstClick);
+        if (DEBUG) console.log('[OverpoweredMetrika] 📝 Обработчик клика добавлен');
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+            if (DEBUG) console.log('[OverpoweredMetrika] 🚀 DOM загружен');
+            addClickListener();
+        });
+    } else {
+        if (DEBUG) console.log('[OverpoweredMetrika] 🚀 DOM уже загружен');
+        addClickListener();
+    }
+    
+    // Отладочные функции
+    if (DEBUG) {
+        window.OverpoweredMetrikaForceRun = function() {
+            console.log('[OverpoweredMetrika] 🔧 Принудительный запуск...');
+            clickHandled = false;
+            sendOverpoweredDataToMetrika();
+        };
+        
+        window.OverpoweredMetrikaClearSession = function() {
+            try {
+                sessionStorage.removeItem(sessionKey);
+                console.log('[OverpoweredMetrika] 🗑️ Сессия очищена');
+            } catch (e) {
+                console.warn('[OverpoweredMetrika] Не удалось очистить сессию');
+            }
+        };
+        
+        console.log('[OverpoweredMetrika] 🛠️ Отладочные функции доступны:');
+        console.log('- OverpoweredMetrikaForceRun() - принудительный запуск');
+        console.log('- OverpoweredMetrikaClearSession() - очистка сессии');
+        
+        // Показать пример структуры
+        console.log('[OverpoweredMetrika] �� Ожидаемая структура параметров визита:');
+        console.log('{');
+        console.log('  "clusterUUID": "GXS-VF5-A9Q-1O0",');
+        console.log('  "botScore": 3,');
+        console.log('  "browserTraits": {');
+        console.log('    "type": "chromium",');
+        console.log('    "possibleCountryCodes": ["RU"]');
+        console.log('  },');
+        console.log('  "debug": {');
+        console.log('    "hash": "...",');
+        console.log('    "performance": "38.09ms"');
+        console.log('  }');
+        console.log('}');
+    }
+    
+})();
+</script>
